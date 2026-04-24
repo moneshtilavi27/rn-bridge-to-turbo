@@ -11,61 +11,100 @@ const path_1 = __importDefault(require("path"));
 const glob_1 = require("glob");
 const bridgeParser_1 = require("../parser/bridgeParser");
 function scanCommand(projectPath, options = {}) {
+    const debug = options.debug ?? false;
     const resolvedProjectPath = path_1.default.resolve(projectPath);
-    console.log(chalk_1.default.blue(`Scanning project: ${resolvedProjectPath}`));
-    if (!fs_extra_1.default.existsSync(resolvedProjectPath)) {
-        console.log(chalk_1.default.red(`Path does not exist: ${resolvedProjectPath}`));
-        return;
-    }
-    if (!fs_extra_1.default.statSync(resolvedProjectPath).isDirectory()) {
-        console.log(chalk_1.default.red(`Path is not a directory: ${resolvedProjectPath}`));
-        return;
-    }
-    const ignore = ["**/build/**", "**/.gradle/**", "**/generated/**"];
-    if (!options.includeNodeModules) {
-        ignore.unshift("**/node_modules/**");
-    }
-    const sourceFiles = (0, glob_1.globSync)("**/*.{java,kt}", {
-        cwd: resolvedProjectPath,
-        absolute: true,
-        nodir: true,
-        ignore
-    }).sort();
-    if (sourceFiles.length === 0) {
-        console.log(chalk_1.default.yellow("No Java or Kotlin files found in the provided project path."));
-        return;
-    }
-    const outDir = path_1.default.join(process.cwd(), "generated/specs");
-    fs_extra_1.default.ensureDirSync(outDir);
-    ensureCodegenConfig(resolvedProjectPath, outDir);
-    let generatedCount = 0;
-    let skippedCount = 0;
-    const outputFileNameCounts = new Map();
-    for (const filePath of sourceFiles) {
-        const methods = (0, bridgeParser_1.parseBridgeFile)(filePath);
-        if (methods.length === 0) {
-            skippedCount++;
-            continue;
+    const outDir = path_1.default.resolve(options.outDir ?? path_1.default.join(process.cwd(), "generated/specs"));
+    try {
+        log("info", `Scanning project ${resolvedProjectPath}`);
+        if (!fs_extra_1.default.existsSync(resolvedProjectPath) || !fs_extra_1.default.statSync(resolvedProjectPath).isDirectory()) {
+            log("error", `Invalid path provided: ${resolvedProjectPath}`);
+            return 1;
         }
-        const moduleName = (0, bridgeParser_1.parseModuleName)(filePath) ?? path_1.default.basename(filePath, path_1.default.extname(filePath));
-        const specContent = generateSpec(moduleName, methods);
-        const baseFileName = `Native${moduleName}`;
-        const nextCount = (outputFileNameCounts.get(baseFileName) ?? 0) + 1;
-        outputFileNameCounts.set(baseFileName, nextCount);
-        const outputFileName = nextCount === 1 ? `${baseFileName}.ts` : `${baseFileName}${nextCount}.ts`;
-        const outFile = path_1.default.join(outDir, outputFileName);
-        fs_extra_1.default.writeFileSync(outFile, specContent);
-        generatedCount++;
-        const relativeSourcePath = path_1.default.relative(resolvedProjectPath, filePath);
-        console.log(chalk_1.default.green(`Generated ${outputFileName} from ${relativeSourcePath}`));
+        const ignore = ["**/build/**", "**/.gradle/**", "**/generated/**"];
+        if (!options.includeNodeModules) {
+            ignore.unshift("**/node_modules/**");
+        }
+        const sourceFiles = (0, glob_1.globSync)("**/*.{java,kt}", {
+            cwd: resolvedProjectPath,
+            absolute: true,
+            nodir: true,
+            ignore
+        }).sort();
+        if (sourceFiles.length === 0) {
+            log("warning", "No Java or Kotlin files found in the provided project path.");
+            return 0;
+        }
+        log("info", `Found ${sourceFiles.length} source file(s)`);
+        log("info", `Writing specs to ${outDir}`);
+        log("info", "Parsing modules...");
+        fs_extra_1.default.ensureDirSync(outDir);
+        ensureCodegenConfig(resolvedProjectPath, outDir, debug);
+        let generatedCount = 0;
+        let skippedCount = 0;
+        const outputFileNameCounts = new Map();
+        for (const filePath of sourceFiles) {
+            const relativeSourcePath = path_1.default.relative(resolvedProjectPath, filePath);
+            const methods = (0, bridgeParser_1.parseBridgeFile)(filePath);
+            if (methods.length === 0) {
+                skippedCount++;
+                if (debug) {
+                    log("debug", `Skipped ${relativeSourcePath} (no @ReactMethod methods found)`);
+                }
+                continue;
+            }
+            const moduleName = (0, bridgeParser_1.parseModuleName)(filePath) ?? path_1.default.basename(filePath, path_1.default.extname(filePath));
+            const specContent = generateSpec(moduleName, methods);
+            const baseFileName = `Native${moduleName}`;
+            const nextCount = (outputFileNameCounts.get(baseFileName) ?? 0) + 1;
+            outputFileNameCounts.set(baseFileName, nextCount);
+            const outputFileName = nextCount === 1 ? `${baseFileName}.ts` : `${baseFileName}${nextCount}.ts`;
+            const outFile = path_1.default.join(outDir, outputFileName);
+            fs_extra_1.default.writeFileSync(outFile, specContent);
+            generatedCount++;
+            log("success", `Generated ${outputFileName}`);
+            if (debug) {
+                log("debug", `${relativeSourcePath} -> ${methods.length} method(s) -> ${path_1.default.relative(process.cwd(), outFile)}`);
+            }
+        }
+        if (generatedCount === 0) {
+            log("warning", "No React Native bridge methods found (@ReactMethod).");
+            return 0;
+        }
+        if (skippedCount > 0) {
+            log("warning", `Skipped ${skippedCount} file(s) without @ReactMethod`);
+        }
+        log("success", `Done! Generated ${generatedCount} module(s) in ${path_1.default.relative(process.cwd(), outDir) || outDir}`);
+        return 0;
     }
-    if (generatedCount === 0) {
-        console.log(chalk_1.default.yellow("No React Native bridge methods found (@ReactMethod)."));
-        return;
+    catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        log("error", message);
+        if (debug && error instanceof Error && error.stack) {
+            log("debug", error.stack);
+        }
+        return 1;
     }
-    console.log(chalk_1.default.green(`Scan complete. Generated ${generatedCount} spec file(s), skipped ${skippedCount} file(s) without @ReactMethod.`));
 }
-function ensureCodegenConfig(resolvedProjectPath, outDir) {
+function log(level, message) {
+    const prefixMap = {
+        info: "[scan]",
+        success: "[ok]",
+        warning: "[warn]",
+        error: "[error]",
+        debug: "[debug]"
+    };
+    const colorize = {
+        info: chalk_1.default.blue,
+        success: chalk_1.default.green,
+        warning: chalk_1.default.yellow,
+        error: chalk_1.default.red,
+        debug: chalk_1.default.gray
+    };
+    const output = `${prefixMap[level]} ${message}`;
+    const stream = level === "error" ? console.error : console.log;
+    stream(colorize[level](output));
+}
+function ensureCodegenConfig(resolvedProjectPath, outDir, debug) {
     const packageJsonCandidates = [
         path_1.default.join(resolvedProjectPath, "package.json"),
         path_1.default.join(process.cwd(), "package.json")
@@ -77,7 +116,7 @@ function ensureCodegenConfig(resolvedProjectPath, outDir) {
         return fs_extra_1.default.existsSync(candidate);
     });
     if (!packageJsonPath) {
-        console.log(chalk_1.default.yellow("No package.json found for codegenConfig injection."));
+        log("warning", "No package.json found for codegenConfig injection.");
         return;
     }
     const packageJson = fs_extra_1.default.readJsonSync(packageJsonPath);
@@ -95,12 +134,14 @@ function ensureCodegenConfig(resolvedProjectPath, outDir) {
         packageJson.codegenConfig.type !== merged.type ||
         packageJson.codegenConfig.jsSrcsDir !== merged.jsSrcsDir;
     if (!changed) {
-        console.log(chalk_1.default.gray(`codegenConfig already present in ${path_1.default.relative(process.cwd(), packageJsonPath) || "package.json"}`));
+        if (debug) {
+            log("debug", `codegenConfig already present in ${path_1.default.relative(process.cwd(), packageJsonPath) || "package.json"}`);
+        }
         return;
     }
     packageJson.codegenConfig = merged;
     fs_extra_1.default.writeJsonSync(packageJsonPath, packageJson, { spaces: 2 });
-    console.log(chalk_1.default.green(`Updated codegenConfig in ${path_1.default.relative(process.cwd(), packageJsonPath) || "package.json"}`));
+    log("success", `Updated codegenConfig in ${path_1.default.relative(process.cwd(), packageJsonPath) || "package.json"}`);
 }
 function generateSpec(moduleName, methods) {
     const interfaceName = `Native${moduleName}Spec`;

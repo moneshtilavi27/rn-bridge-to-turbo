@@ -2,6 +2,20 @@
 
 Convert React Native Bridge modules to Codegen-ready TurboModule specs.
 
+## CLI
+`rn-bridge-to-turbo` ships as a proper executable command.
+
+Examples:
+
+```bash
+npx rn-bridge-to-turbo --help
+npx rn-bridge-to-turbo --version
+npx rn-bridge-to-turbo scan .
+npx rn-bridge-to-turbo scan . --include-node-modules
+npx rn-bridge-to-turbo scan . --out-dir ./specs
+npx rn-bridge-to-turbo scan . --debug
+```
+
 ## What This Library Does
 - Scans a React Native project for Java and Kotlin native module files
 - Finds @ReactMethod methods
@@ -17,26 +31,52 @@ Use in this project:
 
 ```bash
 npm install
+npm run build
 ```
 
-For local CLI usage:
+For local development:
 
 ```bash
-npx tsc
-node dist/cli.js scan <your-react-native-project-path>
+npm run dev -- scan <your-react-native-project-path>
+```
+
+For a global install from the repository root:
+
+```bash
+npm install -g .
+rn-bridge-to-turbo scan <your-react-native-project-path>
 ```
 
 ## Usage
 Basic scan:
 
 ```bash
-node dist/cli.js scan <your-react-native-project-path>
+rn-bridge-to-turbo scan <your-react-native-project-path>
 ```
 
 Include node_modules in scan:
 
 ```bash
-node dist/cli.js scan <your-react-native-project-path> --include-node-modules
+rn-bridge-to-turbo scan <your-react-native-project-path> --include-node-modules
+```
+
+Custom output directory:
+
+```bash
+rn-bridge-to-turbo scan <your-react-native-project-path> --out-dir ./specs
+```
+
+Verbose debugging:
+
+```bash
+rn-bridge-to-turbo scan <your-react-native-project-path> --debug
+```
+
+Help and version:
+
+```bash
+rn-bridge-to-turbo --help
+rn-bridge-to-turbo --version
 ```
 
 ## React Native Codegen Setup
@@ -80,11 +120,24 @@ Common mappings:
 
 ## Build and Verify
 ```bash
-npx tsc --noEmit
-npx tsc
-node dist/cli.js scan <your-react-native-project-path>
+npm run typecheck
+npm run build
+npm test
+rn-bridge-to-turbo scan <your-react-native-project-path>
 ```
 
 ## Notes
-- Parser is regex-based and designed for common real-world bridge patterns
+- Java parsing is AST-based with a regex fallback for resilience
+- Kotlin parsing currently uses regex-based extraction
 - If a signature is unusual, generated output may need small manual adjustments
+
+## Example Output
+```text
+[scan] Scanning project /path/to/app
+[scan] Found 12 source file(s)
+[scan] Writing specs to /path/to/generated/specs
+[scan] Parsing modules...
+[ok] Generated NativeMyModule.ts
+[warn] Skipped 3 file(s) without @ReactMethod
+[ok] Done! Generated 5 module(s) in generated/specs
+```
