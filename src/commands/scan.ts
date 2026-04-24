@@ -15,7 +15,7 @@ type LogLevel = "info" | "success" | "warning" | "error" | "debug";
 export function scanCommand(projectPath: string, options: ScanCommandOptions = {}): number {
   const debug = options.debug ?? false;
   const resolvedProjectPath = path.resolve(projectPath);
-  const outDir = path.resolve(options.outDir ?? path.join(process.cwd(), "generated/specs"));
+  const outDir = path.resolve(options.outDir ?? path.join(resolvedProjectPath, "generated/specs"));
 
   try {
     log("info", `Scanning project ${resolvedProjectPath}`);
@@ -67,17 +67,23 @@ export function scanCommand(projectPath: string, options: ScanCommandOptions = {
 
       const moduleName = parseModuleName(filePath) ?? path.basename(filePath, path.extname(filePath));
       const specContent = generateSpec(moduleName, methods);
+      const subfolder = resolveOutputSubfolder(filePath, resolvedProjectPath);
+      const subOutDir = path.join(outDir, subfolder);
+      fs.ensureDirSync(subOutDir);
+
       const baseFileName = `Native${moduleName}`;
-      const nextCount = (outputFileNameCounts.get(baseFileName) ?? 0) + 1;
-      outputFileNameCounts.set(baseFileName, nextCount);
+      const countKey = `${subfolder}::${baseFileName}`;
+      const nextCount = (outputFileNameCounts.get(countKey) ?? 0) + 1;
+      outputFileNameCounts.set(countKey, nextCount);
 
       const outputFileName = nextCount === 1 ? `${baseFileName}.ts` : `${baseFileName}${nextCount}.ts`;
-      const outFile = path.join(outDir, outputFileName);
+      const outFile = path.join(subOutDir, outputFileName);
 
       fs.writeFileSync(outFile, specContent);
       generatedCount++;
 
-      log("success", `Generated ${outputFileName}`);
+      const displayPath = `${subfolder}/${outputFileName}`;
+      log("success", `Generated ${displayPath}`);
       if (debug) {
         log("debug", `${relativeSourcePath} -> ${methods.length} method(s) -> ${path.relative(process.cwd(), outFile)}`);
       }
@@ -104,6 +110,24 @@ export function scanCommand(projectPath: string, options: ScanCommandOptions = {
 
     return 1;
   }
+}
+
+function resolveOutputSubfolder(filePath: string, resolvedProjectPath: string): string {
+  const rel = path.relative(resolvedProjectPath, filePath);
+  const parts = rel.split(path.sep);
+  const nmIdx = parts.indexOf("node_modules");
+  if (nmIdx === -1) {
+    return "app";
+  }
+  const packagePart = parts[nmIdx + 1];
+  if (!packagePart) {
+    return "app";
+  }
+  // scoped package: use just the @scope as folder
+  if (packagePart.startsWith("@")) {
+    return packagePart;
+  }
+  return packagePart;
 }
 
 function log(level: LogLevel, message: string): void {
