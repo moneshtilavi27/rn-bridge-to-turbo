@@ -1,11 +1,21 @@
 {
   "name": "rn-bridge-to-turbo",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Convert React Native Bridge modules to TurboModule specs",
   "main": "dist/cli.js",
   "bin": {
     "rn-bridge-to-turbo": "./bin/index.js"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/moneshtilavi27/rn-bridge-to-turbo.git"
+  },
+
+  "bugs": {
+    "url": "https://github.com/moneshtilavi27/rn-bridge-to-turbo/issues"
+  },
+
+  "homepage": "https://github.com/moneshtilavi27/rn-bridge-to-turbo#readme",
   "scripts": {
     "build": "tsc",
     "dev": "ts-node src/cli.ts",
