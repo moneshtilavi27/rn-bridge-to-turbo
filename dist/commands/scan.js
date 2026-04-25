@@ -13,7 +13,7 @@ const bridgeParser_1 = require("../parser/bridgeParser");
 function scanCommand(projectPath, options = {}) {
     const debug = options.debug ?? false;
     const resolvedProjectPath = path_1.default.resolve(projectPath);
-    const outDir = path_1.default.resolve(options.outDir ?? path_1.default.join(process.cwd(), "generated/specs"));
+    const outDir = path_1.default.resolve(options.outDir ?? path_1.default.join(resolvedProjectPath, "generated/specs"));
     try {
         log("info", `Scanning project ${resolvedProjectPath}`);
         if (!fs_extra_1.default.existsSync(resolvedProjectPath) || !fs_extra_1.default.statSync(resolvedProjectPath).isDirectory()) {
@@ -54,14 +54,19 @@ function scanCommand(projectPath, options = {}) {
             }
             const moduleName = (0, bridgeParser_1.parseModuleName)(filePath) ?? path_1.default.basename(filePath, path_1.default.extname(filePath));
             const specContent = generateSpec(moduleName, methods);
+            const subfolder = resolveOutputSubfolder(filePath, resolvedProjectPath);
+            const subOutDir = path_1.default.join(outDir, subfolder);
+            fs_extra_1.default.ensureDirSync(subOutDir);
             const baseFileName = `Native${moduleName}`;
-            const nextCount = (outputFileNameCounts.get(baseFileName) ?? 0) + 1;
-            outputFileNameCounts.set(baseFileName, nextCount);
+            const countKey = `${subfolder}::${baseFileName}`;
+            const nextCount = (outputFileNameCounts.get(countKey) ?? 0) + 1;
+            outputFileNameCounts.set(countKey, nextCount);
             const outputFileName = nextCount === 1 ? `${baseFileName}.ts` : `${baseFileName}${nextCount}.ts`;
-            const outFile = path_1.default.join(outDir, outputFileName);
+            const outFile = path_1.default.join(subOutDir, outputFileName);
             fs_extra_1.default.writeFileSync(outFile, specContent);
             generatedCount++;
-            log("success", `Generated ${outputFileName}`);
+            const displayPath = `${subfolder}/${outputFileName}`;
+            log("success", `Generated ${displayPath}`);
             if (debug) {
                 log("debug", `${relativeSourcePath} -> ${methods.length} method(s) -> ${path_1.default.relative(process.cwd(), outFile)}`);
             }
@@ -84,6 +89,23 @@ function scanCommand(projectPath, options = {}) {
         }
         return 1;
     }
+}
+function resolveOutputSubfolder(filePath, resolvedProjectPath) {
+    const rel = path_1.default.relative(resolvedProjectPath, filePath);
+    const parts = rel.split(path_1.default.sep);
+    const nmIdx = parts.indexOf("node_modules");
+    if (nmIdx === -1) {
+        return "app";
+    }
+    const packagePart = parts[nmIdx + 1];
+    if (!packagePart) {
+        return "app";
+    }
+    // scoped package: use just the @scope as folder
+    if (packagePart.startsWith("@")) {
+        return packagePart;
+    }
+    return packagePart;
 }
 function log(level, message) {
     const prefixMap = {

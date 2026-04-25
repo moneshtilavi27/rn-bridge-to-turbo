@@ -1,6 +1,6 @@
 {
   "name": "rn-bridge-to-turbo",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "Convert React Native Bridge modules to TurboModule specs",
   "main": "dist/cli.js",
   "bin": {
@@ -21,8 +21,8 @@
     "codegen",
     "cli"
   ],
-  "author": "",
-  "license": "ISC",
+  "author": "Monesh Tilavi",
+  "license": "MIT",
   "type": "commonjs",
   "files": [
     "bin",
